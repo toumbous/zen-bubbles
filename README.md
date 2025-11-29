@@ -1,5 +1,11 @@
 # Zen Bubbles
 
+### 🎮 Play Online
+
+👉 https://toumbous.github.io/zen-bubbles/
+
+![Zen Bubbles Screenshot](screenshot.png)
+
 A minimal, relaxing bubble-popper game built with HTML5 Canvas and vanilla JavaScript.
 
 Zen Bubbles starts calm, encouraging a “flow state”, and gradually becomes more challenging as bubbles spawn faster and rise quicker. Designed to feel meditative at first and lightly intense towards the end – the perfect mix of focus and relaxation.
