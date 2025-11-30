@@ -1,13 +1,53 @@
-// Zen Bubbles - v2.4
-// Pop sound, forgiving hitbox, Elena stages (slower), Anastasia intro + split mini-bubbles ONLY on mother bubble
+// Zen Bubbles - v2.5
+// Pop sound pool (mobile-friendly), forgiving hitbox, Elena stages, Anastasia intro + mother bubble split in big playable bubbles
 
 // Canvas setup
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
-// Ήχος για το σκάσιμο της φούσκας
-const popSound = new Audio("pop.mp3"); // βεβαιώσου ότι υπάρχει το αρχείο δίπλα
-popSound.volume = 0.4;
+// Ήχοι για το σκάσιμο της φούσκας (pool για λιγότερο lag σε κινητά)
+const POP_POOL_SIZE = 6;
+const popSounds = [];
+let popIndex = 0;
+
+for (let i = 0; i < POP_POOL_SIZE; i++) {
+  const a = new Audio("pop.mp3");
+  a.volume = 0.4;
+  a.preload = "auto";
+  popSounds.push(a);
+}
+
+let audioUnlocked = false;
+
+function unlockAudio() {
+  if (audioUnlocked) return;
+  audioUnlocked = true;
+
+  // "ζεσταίνουμε" τα audio objects σε ένα user gesture
+  popSounds.forEach((a) => {
+    a.play().then(() => {
+      a.pause();
+      a.currentTime = 0;
+    }).catch(() => {
+      // σε κάποιους browsers μπορεί να αποτύχει σιωπηλά, δεν μας νοιάζει
+    });
+  });
+}
+
+function playPopSound() {
+  const s = popSounds[popIndex];
+  popIndex = (popIndex + 1) % POP_POOL_SIZE;
+
+  try {
+    s.currentTime = 0;
+  } catch (e) {
+    // σε κάποιους mobile browsers μπορεί να μην επιτρέπεται, αλλά συνήθως δουλεύει
+  }
+
+  s.play().catch(() => {
+    // αν αποτύχει, το αγνοούμε – απλώς δεν θα ακουστεί ένα pop
+  });
+}
 
 let width = window.innerWidth;
 let height = window.innerHeight;
@@ -34,7 +74,6 @@ const startButton = document.getElementById("startButton");
 
 // Game state
 let bubbles = [];
-let miniBubbles = [];   // μικρές φούσκες από σπάσιμο
 let lastSpawn = 0;
 let spawnInterval = 1400; // slower start (ms)
 let lastTime = 0;
@@ -189,59 +228,6 @@ function drawIntro(ctx) {
   ctx.restore();
 }
 
-// --------------------------------------------------
-// MiniBubble - μικρές φούσκες όταν σκάει η μεγάλη (ιδέα Αναστασίας)
-// --------------------------------------------------
-class MiniBubble {
-  constructor(x, y, color, radiusScale = 1) {
-    this.x = x;
-    this.y = y;
-    this.radius = randomRange(4, 9) * radiusScale;
-    this.vx = randomRange(-40, 40) * radiusScale;
-    this.vy = randomRange(-60, -20) * radiusScale;
-    this.life = 0; // 0 → 1
-    this.color = color;
-  }
-
-  update(dt) {
-    this.life += dt;
-    this.x += this.vx * dt;
-    this.y += this.vy * dt;
-    // ελαφριά "βαρύτητα"
-    this.vy += 30 * dt;
-  }
-
-  draw(ctx) {
-    const alpha = Math.max(0, 1 - this.life); // σβήνει σταδιακά
-    if (alpha <= 0) return;
-
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.beginPath();
-    ctx.fillStyle = this.color;
-    ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  isDead() {
-    return this.life >= 1.0;
-  }
-}
-
-function spawnMiniBubbles(x, y, count = 3, radiusScale = 1) {
-  const colors = [
-    "rgba(253, 224, 71, 0.9)",   // golden
-    "rgba(156, 163, 175, 0.9)",  // silver-ish
-    "rgba(244, 114, 82, 0.9)",   // warm bronze-ish
-  ];
-  for (let i = 0; i < count; i++) {
-    const color = colors[i % colors.length];
-    miniBubbles.push(new MiniBubble(x, y, color, radiusScale));
-  }
-}
-
-// το σπάσιμο της μητρικής φούσκας
 // το σπάσιμο της μητρικής φούσκας σε μεγαλύτερες κανονικές φούσκες
 function spawnMotherSplit(cx, cy) {
   const { motherRadius } = motherBubbleParams();
@@ -389,10 +375,6 @@ function update(dt) {
   // Update κανονικές φούσκες
   bubbles.forEach((b) => b.update(dt, difficultyFactor));
 
-  // Update mini bubbles
-  miniBubbles.forEach((mb) => mb.update(dt));
-  miniBubbles = miniBubbles.filter((mb) => !mb.isDead());
-
   // Handle off-screen bubbles
   let missed = 0;
   bubbles = bubbles.filter((b) => {
@@ -452,9 +434,6 @@ function draw() {
   // Κανονικές φούσκες
   bubbles.forEach((b) => b.draw(ctx));
 
-  // Mini-bubbles από σπάσιμο (της μητρικής)
-  miniBubbles.forEach((mb) => mb.draw(ctx));
-
   // Minimal "New Stage" indicator όταν γίνεται fade
   if (bgBlend < 1) {
     ctx.save();
@@ -494,10 +473,8 @@ canvas.addEventListener("pointerdown", (e) => {
     const bubble = bubbles[i];
     if (bubble.containsPoint(x, y)) {
       // Ήχος
-      popSound.currentTime = 0;
-      popSound.play();
+      playPopSound();
 
-      // ΔΕΝ σπάει σε μικρές – αυτό συμβαίνει μόνο στη μητρική στο intro
       // Pop bubble
       bubbles.splice(i, 1);
       popped = true;
@@ -544,7 +521,6 @@ canvas.addEventListener("pointerdown", (e) => {
 // --------------------------------------------------
 function resetGame() {
   bubbles = [];
-  miniBubbles = [];
   score = 0;
   lives = 7;
   elapsed = 0;
@@ -589,8 +565,14 @@ function endGame() {
   `;
 
   const newButton = document.getElementById("startButton");
-  newButton.addEventListener("click", startGame);
+  newButton.addEventListener("click", () => {
+    unlockAudio();
+    startGame();
+  });
 }
 
 // Initial overlay behaviour
-startButton.addEventListener("click", startGame);
+startButton.addEventListener("click", () => {
+  unlockAudio();
+  startGame();
+});
